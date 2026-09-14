@@ -24,16 +24,28 @@ def test_pipeline_smoke(tmp_path, monkeypatch):
 
     conn = get_connection(db_path)
     try:
+        announcements = conn.execute("SELECT * FROM announcements").fetchall()
         projects = conn.execute("SELECT * FROM projects").fetchall()
+        project_provinces = conn.execute("SELECT * FROM project_provinces").fetchall()
         tenders = conn.execute("SELECT * FROM tenders").fetchall()
         runs = conn.execute("SELECT * FROM scrape_runs").fetchall()
     finally:
         conn.close()
 
+    assert len(announcements) == 1
+    assert announcements[0]["province"] == "Salta"
+    assert announcements[0]["investment_usd"] == 1000000.0
+    assert announcements[0]["project_id"] is not None
+
     assert len(projects) == 1
-    assert projects[0]["province"] == "Salta"
+    assert projects[0]["name"] == "Proyecto Test"
+    assert projects[0]["total_investment_usd"] == 1000000.0
+    assert projects[0]["announcement_count"] == 1
     assert projects[0]["lat"] is not None
-    assert projects[0]["investment_usd"] == 1000000.0
+    assert announcements[0]["project_id"] == projects[0]["id"]
+
+    assert len(project_provinces) == 1
+    assert project_provinces[0]["province"] == "Salta"
 
     assert len(tenders) == 1
     assert tenders[0]["title"] == "Objeto de prueba"

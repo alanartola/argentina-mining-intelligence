@@ -19,7 +19,7 @@ class SecretariaMineriaScraper(BaseScraper):
     """
 
     SOURCE_NAME = "secretaria_mineria_siacam"
-    TARGET_TABLE = "projects"
+    TARGET_TABLE = "announcements"
 
     def fetch(self) -> str:
         response = requests.get(

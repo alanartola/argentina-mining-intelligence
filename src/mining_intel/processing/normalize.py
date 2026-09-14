@@ -42,16 +42,18 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def normalize_projects(records: list[dict], source: str) -> pd.DataFrame:
+def normalize_announcements(records: list[dict], source: str) -> pd.DataFrame:
+    """Clean up raw investment-announcement records (one row per SIACAM CSV line).
+
+    Deduplication into unique projects happens later, in
+    `processing.dedup`, over the full `announcements` table - this function
+    only normalizes each announcement on its own.
+    """
     if not records:
         return pd.DataFrame()
 
     df = pd.DataFrame(records)
     df["province"] = df["province"].map(normalize_province)
-
-    centroids = df["province"].map(get_province_centroid)
-    df["lat"] = centroids.map(lambda c: c[0] if c else None)
-    df["lon"] = centroids.map(lambda c: c[1] if c else None)
 
     df["source"] = source
     df["last_updated"] = _now_iso()

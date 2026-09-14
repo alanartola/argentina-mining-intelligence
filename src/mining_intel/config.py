@@ -16,6 +16,20 @@ SIACAM_INVESTMENTS_CSV_URL = "https://www.mecon.gob.ar/dataset/Anuncios-de-inver
 SAN_JUAN_TENDERS_URL = "https://licitaciones.sanjuan.gob.ar/index.php"
 SAN_JUAN_MINERIA_ORG_ID = "2524"
 
+# Human-readable labels for the internal scraper source slugs (SOURCE_NAME on
+# each BaseScraper) - the UI shows the label, never the raw slug. The slug
+# itself stays the DB/logic identifier and is untouched by this mapping.
+SOURCE_DISPLAY_NAMES = {
+    "secretaria_mineria_siacam": {
+        "label": "Secretaría de Minería",
+        "url": "https://www.argentina.gob.ar/economia/mineria/siacam",
+    },
+    "san_juan_licitaciones_mineria": {
+        "label": "Ministerio de Minería de San Juan",
+        "url": "https://licitaciones.sanjuan.gob.ar/",
+    },
+}
+
 # Centroides aproximados por provincia, usados como fallback cuando una fuente
 # no publica coordenadas propias para un proyecto/licitación.
 PROVINCE_CENTROIDS = {
