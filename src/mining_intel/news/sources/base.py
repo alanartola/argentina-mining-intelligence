@@ -17,6 +17,12 @@ class NewsSource(ABC):
     DISPLAY_NAME: str
     SOURCE_URL: str
     OFFICIAL: bool = False
+    # How the source is actually consulted (API/RSS/DATASET/HTML/SEARCH) and
+    # a coarse grouping (Nacional/Provincial/Regulador/Medio) - shown as-is
+    # in the "Fuentes" data-quality view, never implying a stronger
+    # guarantee than what's really there.
+    AUTOMATION_METHOD: str = "HTML"
+    SOURCE_TYPE: str = "Medio"
 
     @abstractmethod
     def fetch(self) -> Any:

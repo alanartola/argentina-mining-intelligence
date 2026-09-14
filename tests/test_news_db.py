@@ -38,6 +38,16 @@ def test_content_hash_is_enforced_unique(tmp_path):
         conn.close()
 
 
+def test_news_sources_has_automation_method_and_source_type_columns(tmp_path):
+    conn = get_connection(tmp_path / "columns_test.db")
+    try:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(news_sources)")}
+    finally:
+        conn.close()
+    assert "automation_method" in columns
+    assert "source_type" in columns
+
+
 def test_news_sources_upsert_by_internal_name(tmp_path):
     conn = get_connection(tmp_path / "sources_test.db")
     try:

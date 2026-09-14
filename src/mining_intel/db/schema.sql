@@ -111,10 +111,17 @@ CREATE TABLE IF NOT EXISTS news_events (
 -- Status/health of every news source, including the ones we deliberately
 -- don't run (UNSUPPORTED/MANUAL) - so the "Fuentes" view is honest about
 -- what is and isn't actually connected, never silently omitting a source.
+-- automation_method: API / RSS / DATASET / HTML / SEARCH / MANUAL - how the
+-- source is actually consulted, so "Fuentes" never implies a stronger
+-- guarantee (e.g. a stable API) than what's really there (fragile HTML).
+-- source_type: Nacional / Provincial / Regulador / Medio - just for
+-- grouping in the UI.
 CREATE TABLE IF NOT EXISTS news_sources (
     internal_name TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
     state TEXT NOT NULL,
+    automation_method TEXT,
+    source_type TEXT,
     last_run_at TEXT,
     last_success_at TEXT,
     last_document_count INTEGER,

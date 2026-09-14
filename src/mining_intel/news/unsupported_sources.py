@@ -5,67 +5,56 @@ during evaluation for why the source can't be automated reliably right now.
 `news.pipeline.run_daily` writes these into `news_sources` once so the
 "Fuentes" view is complete and honest, without needing a scraper to run
 just to populate a status row.
+
+Reuters and Bloomberg were explicitly de-prioritized for this iteration
+(paywall/restricted access, not attempted). Boletín Oficial, CNV/AIF,
+Jujuy, Santa Cruz and Mendoza moved OUT of this list into real
+`NewsSource` implementations after re-investigation found a genuine,
+stable way to consult each of them - see `news/sources/`.
 """
 
 UNSUPPORTED_SOURCES = [
     {
-        "internal_name": "boletin_oficial_nacional",
-        "display_name": "Boletín Oficial de la República Argentina",
+        "internal_name": "ministerio_economia_rigi",
+        "display_name": "Ministerio de Economía / RIGI",
         "state": "UNSUPPORTED",
+        "automation_method": "MANUAL",
+        "source_type": "Nacional",
         "reason": (
-            "La búsqueda avanzada (busquedaAvanzada) se renderiza del lado del cliente; "
-            "no encontramos una API JSON pública equivalente a la de CABA."
+            "El panel público (argentina.gob.ar/economia/rigi) solo expone conteos agregados "
+            "por sector (ej. \"Minería: 12 proyectos aprobados\") mediante un dashboard Drupal. "
+            "El mapa interactivo de proyectos es un widget embebido complejo: revisamos las "
+            "solicitudes de red y los scripts embebidos de la página y no encontramos un "
+            "endpoint de datos por proyecto. Sin un listado por proyecto no hay forma de "
+            "detectar novedades puntuales de forma reproducible."
         ),
     },
     {
-        "internal_name": "cnv_aif",
-        "display_name": "CNV - Autopista de Información Financiera (Hechos Relevantes)",
+        "internal_name": "catamarca_mineria",
+        "display_name": "Gobierno de Catamarca",
         "state": "UNSUPPORTED",
-        "reason": "No encontramos una API de datos abiertos pública para Hechos Relevantes.",
-    },
-    {
-        "internal_name": "rigi_economia",
-        "display_name": "RIGI (Ministerio de Economía)",
-        "state": "UNSUPPORTED",
+        "automation_method": "MANUAL",
+        "source_type": "Provincial",
         "reason": (
-            "El panel público solo expone conteos agregados por sector (ej. \"Minería: 12 "
-            "proyectos aprobados\"), sin un listado por proyecto que permita detectar novedades puntuales."
+            "Probamos legislacionminera.catamarca.gob.ar y portal.catamarca.gob.ar "
+            "directamente (no solo /feed): ambos devuelven 403 (protección anti-bots a nivel "
+            "de infraestructura, no un endpoint puntual roto). No se intenta evadir la protección."
         ),
-    },
-    {
-        "internal_name": "catamarca_gobierno",
-        "display_name": "Gobierno de Catamarca / Minería",
-        "state": "UNSUPPORTED",
-        "reason": "Los endpoints de feed probados devolvieron 403 (protección anti-bots); no se intentó evadir.",
-    },
-    {
-        "internal_name": "jujuy_gobierno",
-        "display_name": "Gobierno de Jujuy / Minería",
-        "state": "MANUAL",
-        "reason": "No se encontró un feed funcional en los dominios/rutas probadas en esta pasada.",
-    },
-    {
-        "internal_name": "santa_cruz_gobierno",
-        "display_name": "Gobierno de Santa Cruz / Minería",
-        "state": "MANUAL",
-        "reason": "No se encontró un feed funcional en los dominios/rutas probadas en esta pasada.",
-    },
-    {
-        "internal_name": "mendoza_gobierno",
-        "display_name": "Gobierno de Mendoza",
-        "state": "MANUAL",
-        "reason": "El feed RSS responde 200 pero no devolvió items durante la validación (0 registros).",
     },
     {
         "internal_name": "reuters",
         "display_name": "Reuters",
         "state": "UNSUPPORTED",
+        "automation_method": "MANUAL",
+        "source_type": "Medio",
         "reason": "Contenido con acceso restringido; no se intenta evadir restricciones de acceso.",
     },
     {
         "internal_name": "bloomberg",
         "display_name": "Bloomberg",
         "state": "UNSUPPORTED",
+        "automation_method": "MANUAL",
+        "source_type": "Medio",
         "reason": "Contenido con paywall; no se intenta evadir restricciones de acceso.",
     },
 ]

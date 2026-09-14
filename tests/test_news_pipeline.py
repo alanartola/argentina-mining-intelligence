@@ -1,6 +1,12 @@
 from mining_intel.db.connection import get_connection
 from mining_intel.news import pipeline
-from mining_intel.news.sources.rss_source import AmbitoEnergiaSource, MineriaYDesarrolloSource, SaltaMineriaSource
+from mining_intel.news.sources.rss_source import (
+    AmbitoEnergiaSource,
+    MendozaPrensaSource,
+    MineriaYDesarrolloSource,
+    SaltaMineriaSource,
+    SantaCruzMineriaSource,
+)
 
 
 def _rss(items: list[tuple[str, str, str, str]]) -> str:
@@ -153,8 +159,37 @@ def test_run_daily_registers_unsupported_sources(tmp_path, monkeypatch):
     conn = get_connection(db_path)
     try:
         row = conn.execute(
-            "SELECT state FROM news_sources WHERE internal_name = ?", ("boletin_oficial_nacional",)
+            "SELECT state, automation_method FROM news_sources WHERE internal_name = ?",
+            ("ministerio_economia_rigi",),
         ).fetchone()
     finally:
         conn.close()
     assert row["state"] == "UNSUPPORTED"
+    assert row["automation_method"] == "MANUAL"
+
+
+def test_run_daily_processes_the_two_new_provincial_rss_sources(tmp_path, monkeypatch):
+    monkeypatch.setattr(MineriaYDesarrolloSource, "fetch", lambda self: _rss([]))
+    monkeypatch.setattr(AmbitoEnergiaSource, "fetch", lambda self: _rss([]))
+    monkeypatch.setattr(SaltaMineriaSource, "fetch", lambda self: _rss([]))
+    monkeypatch.setattr(SantaCruzMineriaSource, "fetch", lambda self: _rss([MINING_ITEM]))
+    monkeypatch.setattr(MendozaPrensaSource, "fetch", lambda self: _rss([NON_MINING_ITEM]))
+
+    db_path = tmp_path / "news_test_new_provinces.db"
+    summary = pipeline.run_daily(db_path=db_path)
+
+    assert summary["sources"]["santa_cruz_mineria"]["new_events"] == 1
+    assert summary["sources"]["mendoza_mineria"]["new_events"] == 0
+    assert summary["sources"]["mendoza_mineria"]["filtered_out"] == 1
+    assert summary["total_new_events"] == 1
+
+    conn = get_connection(db_path)
+    try:
+        sources = {
+            row["internal_name"]: (row["state"], row["automation_method"], row["source_type"])
+            for row in conn.execute("SELECT * FROM news_sources")
+        }
+    finally:
+        conn.close()
+    assert sources["santa_cruz_mineria"] == ("ACTIVE", "RSS", "Provincial")
+    assert sources["mendoza_mineria"] == ("ACTIVE", "RSS", "Provincial")

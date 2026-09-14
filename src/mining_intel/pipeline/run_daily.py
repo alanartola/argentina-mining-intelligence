@@ -29,9 +29,18 @@ def main() -> None:
     logging.info("Paso 2/2: ejecutando el monitor de novedades...")
     summary = run_news_daily()
 
-    logging.info("Novedades detectadas: %d", summary["total_new_events"])
+    logging.info(
+        "Fuentes consultadas: %d (exitosas: %d, fallidas: %d)",
+        summary["sources_consulted"], summary["sources_ok"], summary["sources_failed"],
+    )
+    logging.info("Publicaciones procesadas: %d", summary["total_fetched"])
+    logging.info("Descartadas por no ser minería: %d", summary["total_filtered_out"])
+    logging.info("Duplicados descartados: %d", summary["total_duplicates"])
+    logging.info("Novedades nuevas: %d", summary["total_new_events"])
     for internal_name, info in summary["sources"].items():
         logging.info("  %s: %s", internal_name, info)
+    for error in summary["errors"]:
+        logging.error("  error: %s", error)
 
 
 if __name__ == "__main__":

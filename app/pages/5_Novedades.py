@@ -22,7 +22,7 @@ events = get_news_events_df()
 
 if events.empty:
     st.info(
-        "Todavía no hay novedades detectadas. Corré `python scripts/run_daily_news.py` "
+        "Todavía no hay novedades detectadas. Corré `python -m mining_intel.pipeline.run_daily` "
         "para ejecutar el motor de monitoreo."
     )
     st.stop()

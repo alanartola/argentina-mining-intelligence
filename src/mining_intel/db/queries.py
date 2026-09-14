@@ -191,9 +191,29 @@ def get_news_sources_df() -> pd.DataFrame:
     """Health/status of every news source, including the ones we
     deliberately don't run (UNSUPPORTED/MANUAL) - see
     `mining_intel.news.unsupported_sources`.
+
+    "última novedad detectada" isn't a stored column - it's computed here
+    via MAX(news_events.detected_at) per source, so there's no extra write
+    path for something fully derivable from `news_events`.
     """
     conn = get_connection()
     try:
-        return pd.read_sql_query("SELECT * FROM news_sources ORDER BY display_name", conn)
+        return pd.read_sql_query(
+            """
+            SELECT ns.*, latest.title AS last_new_event_title, latest.detected_at AS last_new_event_at
+            FROM news_sources ns
+            LEFT JOIN (
+                SELECT ne.source_internal_name, ne.title, ne.detected_at
+                FROM news_events ne
+                INNER JOIN (
+                    SELECT source_internal_name, MAX(detected_at) AS max_detected_at
+                    FROM news_events
+                    GROUP BY source_internal_name
+                ) m ON m.source_internal_name = ne.source_internal_name AND m.max_detected_at = ne.detected_at
+            ) latest ON latest.source_internal_name = ns.internal_name
+            ORDER BY ns.display_name
+            """,
+            conn,
+        )
     finally:
         conn.close()

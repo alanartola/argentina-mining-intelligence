@@ -23,6 +23,8 @@ class SiacamAnnouncementsNewsSource(NewsSource):
     DISPLAY_NAME = "Secretaría de Minería"
     SOURCE_URL = "https://www.argentina.gob.ar/economia/mineria/siacam"
     OFFICIAL = True
+    AUTOMATION_METHOD = "DATASET"
+    SOURCE_TYPE = "Nacional"
 
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn

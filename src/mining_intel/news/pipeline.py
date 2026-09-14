@@ -18,17 +18,31 @@ from typing import Optional
 from mining_intel.db.connection import connection
 from mining_intel.news import classify, dedup, filters, link_project
 from mining_intel.news.sources.base import NewsSource
-from mining_intel.news.sources.rss_source import AmbitoEnergiaSource, MineriaYDesarrolloSource, SaltaMineriaSource
+from mining_intel.news.sources.boletin_oficial import BoletinOficialSource
+from mining_intel.news.sources.cnv_aif import CnvHechosRelevantesSource
+from mining_intel.news.sources.jujuy_mineria import JujuyMineriaSource
+from mining_intel.news.sources.rss_source import (
+    AmbitoEnergiaSource,
+    MendozaPrensaSource,
+    MineriaYDesarrolloSource,
+    SaltaMineriaSource,
+    SantaCruzMineriaSource,
+)
 from mining_intel.news.sources.san_juan_updates import SanJuanTendersNewsSource
 from mining_intel.news.sources.siacam_updates import SiacamAnnouncementsNewsSource
 from mining_intel.news.unsupported_sources import UNSUPPORTED_SOURCES
 
 logger = logging.getLogger(__name__)
 
-RSS_SOURCE_CLASSES: list[type[NewsSource]] = [
+# Sources that don't need a live DB connection to construct.
+STANDALONE_SOURCE_CLASSES: list[type[NewsSource]] = [
     MineriaYDesarrolloSource,
     AmbitoEnergiaSource,
     SaltaMineriaSource,
+    SantaCruzMineriaSource,
+    MendozaPrensaSource,
+    BoletinOficialSource,
+    JujuyMineriaSource,
 ]
 
 
@@ -47,6 +61,8 @@ def _upsert_source_status(
     display_name: str,
     state: str,
     success: bool,
+    automation_method: Optional[str] = None,
+    source_type: Optional[str] = None,
     count: Optional[int] = None,
     error: Optional[str] = None,
 ) -> None:
@@ -59,29 +75,35 @@ def _upsert_source_status(
     conn.execute(
         """
         INSERT INTO news_sources
-            (internal_name, display_name, state, last_run_at, last_success_at, last_document_count, last_error)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (internal_name, display_name, state, automation_method, source_type,
+             last_run_at, last_success_at, last_document_count, last_error)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(internal_name) DO UPDATE SET
             display_name = excluded.display_name,
             state = excluded.state,
+            automation_method = excluded.automation_method,
+            source_type = excluded.source_type,
             last_run_at = excluded.last_run_at,
             last_success_at = excluded.last_success_at,
             last_document_count = excluded.last_document_count,
             last_error = excluded.last_error
         """,
-        (internal_name, display_name, state, now, last_success_at, count, error),
+        (internal_name, display_name, state, automation_method, source_type, now, last_success_at, count, error),
     )
 
 
-def _process_item(conn: sqlite3.Connection, source: NewsSource, item: dict, projects: list[tuple[str, str]]) -> bool:
-    """Returns True if a new `news_events` row was inserted."""
+def _process_item(conn: sqlite3.Connection, source: NewsSource, item: dict, projects: list[tuple[str, str]]) -> str:
+    """Returns one of: "filtered_out", "duplicate", "new" - lets the caller
+    build an accurate run summary (processed / duplicados descartados /
+    novedades nuevas), not just a new-vs-not-new boolean.
+    """
     title = item["title"]
     url = item["url"]
     text_for_rules = f"{title}. {item.get('summary_raw', '')}"
 
     is_structured = "category" in item
     if not is_structured and not filters.is_mining_relevant(text_for_rules):
-        return False
+        return "filtered_out"
 
     category = item.get("category") or classify.infer_category(text_for_rules, official=source.OFFICIAL)
     relevance, reason = classify.classify_relevance(
@@ -105,7 +127,7 @@ def _process_item(conn: sqlite3.Connection, source: NewsSource, item: dict, proj
                 "UPDATE news_events SET summary = ?, raw_text = ?, updated_at = ?, status = 'UPDATED' WHERE id = ?",
                 (item.get("summary_raw"), text_for_rules, now, existing_row["id"]),
             )
-        return False
+        return "duplicate"
 
     # Cross-source fuzzy folding only makes sense for free-text sources,
     # where two outlets can genuinely cover the same real-world story under
@@ -124,7 +146,7 @@ def _process_item(conn: sqlite3.Connection, source: NewsSource, item: dict, proj
             "UPDATE news_events SET additional_sources = ? WHERE id = ?",
             (json.dumps(existing_list, ensure_ascii=False), similar["id"]),
         )
-        return False
+        return "duplicate"
 
     conn.execute(
         """
@@ -153,12 +175,26 @@ def _process_item(conn: sqlite3.Connection, source: NewsSource, item: dict, proj
             text_for_rules,
         ),
     )
-    return True
+    return "new"
 
 
 def run_daily(db_path: Optional[Path] = None) -> dict:
-    """Run every registered news source once. Returns a per-source summary."""
-    summary: dict = {"sources": {}, "total_new_events": 0}
+    """Run every registered news source once. Returns a run summary with
+    per-source detail and the aggregate totals the daily report needs:
+    fuentes consultadas/exitosas/fallidas, publicaciones procesadas,
+    novedades nuevas, duplicados descartados, errores.
+    """
+    summary: dict = {
+        "sources": {},
+        "sources_consulted": 0,
+        "sources_ok": 0,
+        "sources_failed": 0,
+        "total_fetched": 0,
+        "total_filtered_out": 0,
+        "total_duplicates": 0,
+        "total_new_events": 0,
+        "errors": [],
+    }
 
     with connection(db_path) as conn:
         projects = _load_projects(conn)
@@ -166,43 +202,89 @@ def run_daily(db_path: Optional[Path] = None) -> dict:
         sources: list[NewsSource] = [
             SiacamAnnouncementsNewsSource(conn),
             SanJuanTendersNewsSource(conn),
-        ] + [cls() for cls in RSS_SOURCE_CLASSES]
+            CnvHechosRelevantesSource(conn),
+        ] + [cls() for cls in STANDALONE_SOURCE_CLASSES]
+
+        summary["sources_consulted"] = len(sources)
 
         for source in sources:
             try:
                 items = source.run()
-                new_count = sum(_process_item(conn, source, item, projects) for item in items)
+                outcomes = [_process_item(conn, source, item, projects) for item in items]
+                new_count = outcomes.count("new")
+                duplicate_count = outcomes.count("duplicate")
+                filtered_count = outcomes.count("filtered_out")
+
                 _upsert_source_status(
-                    conn, source.INTERNAL_NAME, source.DISPLAY_NAME, "ACTIVE", True, count=len(items)
+                    conn,
+                    source.INTERNAL_NAME,
+                    source.DISPLAY_NAME,
+                    "ACTIVE",
+                    True,
+                    automation_method=source.AUTOMATION_METHOD,
+                    source_type=source.SOURCE_TYPE,
+                    count=len(items),
                 )
                 summary["sources"][source.INTERNAL_NAME] = {
                     "fetched": len(items),
+                    "filtered_out": filtered_count,
+                    "duplicates": duplicate_count,
                     "new_events": new_count,
                     "status": "ok",
                 }
+                summary["sources_ok"] += 1
+                summary["total_fetched"] += len(items)
+                summary["total_filtered_out"] += filtered_count
+                summary["total_duplicates"] += duplicate_count
                 summary["total_new_events"] += new_count
-                logger.info("%s: %d fetched, %d new events", source.INTERNAL_NAME, len(items), new_count)
+                logger.info(
+                    "%s: %d fetched, %d filtered out, %d duplicates, %d new events",
+                    source.INTERNAL_NAME, len(items), filtered_count, duplicate_count, new_count,
+                )
             except Exception as exc:  # noqa: BLE001 - isolate one source's failure from the rest
                 _upsert_source_status(
-                    conn, source.INTERNAL_NAME, source.DISPLAY_NAME, "FAILED", False, error=str(exc)
+                    conn,
+                    source.INTERNAL_NAME,
+                    source.DISPLAY_NAME,
+                    "FAILED",
+                    False,
+                    automation_method=source.AUTOMATION_METHOD,
+                    source_type=source.SOURCE_TYPE,
+                    error=str(exc),
                 )
                 summary["sources"][source.INTERNAL_NAME] = {
                     "fetched": 0,
+                    "filtered_out": 0,
+                    "duplicates": 0,
                     "new_events": 0,
                     "status": "error",
                     "error": str(exc),
                 }
+                summary["sources_failed"] += 1
+                summary["errors"].append(f"{source.INTERNAL_NAME}: {exc}")
                 logger.error("%s failed: %s", source.INTERNAL_NAME, exc)
                 logger.debug(traceback.format_exc())
 
         for entry in UNSUPPORTED_SOURCES:
-            exists = conn.execute(
-                "SELECT 1 FROM news_sources WHERE internal_name = ?", (entry["internal_name"],)
-            ).fetchone()
-            if exists is None:
-                conn.execute(
-                    "INSERT INTO news_sources (internal_name, display_name, state, last_error) VALUES (?, ?, ?, ?)",
-                    (entry["internal_name"], entry["display_name"], entry["state"], entry["reason"]),
-                )
+            conn.execute(
+                """
+                INSERT INTO news_sources (internal_name, display_name, state, automation_method, source_type, last_error)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(internal_name) DO UPDATE SET
+                    display_name = excluded.display_name,
+                    state = excluded.state,
+                    automation_method = excluded.automation_method,
+                    source_type = excluded.source_type,
+                    last_error = excluded.last_error
+                """,
+                (
+                    entry["internal_name"],
+                    entry["display_name"],
+                    entry["state"],
+                    entry["automation_method"],
+                    entry["source_type"],
+                    entry["reason"],
+                ),
+            )
 
     return summary

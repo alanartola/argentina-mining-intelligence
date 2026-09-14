@@ -16,6 +16,8 @@ class SanJuanTendersNewsSource(NewsSource):
     DISPLAY_NAME = "Ministerio de Minería de San Juan"
     SOURCE_URL = "https://licitaciones.sanjuan.gob.ar/"
     OFFICIAL = True
+    AUTOMATION_METHOD = "HTML"
+    SOURCE_TYPE = "Provincial"
 
     def __init__(self, conn: sqlite3.Connection):
         self._conn = conn
