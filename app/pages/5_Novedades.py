@@ -4,7 +4,17 @@ import pandas as pd
 import streamlit as st
 
 from mining_intel.db.queries import get_news_events_df
-from style import badge, badge_row, hero, inject_base_styles, relevance_kind, section_header, sidebar_brand
+from style import (
+    badge,
+    badge_row,
+    category_label,
+    hero,
+    inject_base_styles,
+    relevance_kind,
+    relevance_label,
+    section_header,
+    sidebar_brand,
+)
 
 st.set_page_config(page_title="Novedades - Argentina Mining Intelligence", page_icon="🆕", layout="wide")
 
@@ -44,13 +54,17 @@ section_header("Feed cronológico", "Ordenado por fecha de detección, de más r
 
 with st.container(border=True):
     fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns(5)
-    relevance_filter = fcol1.multiselect("Relevancia", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], key="news_relevance")
+    relevance_filter = fcol1.multiselect(
+        "Relevancia", ["CRITICAL", "HIGH", "MEDIUM", "LOW"], format_func=relevance_label, key="news_relevance"
+    )
     source_filter = fcol2.multiselect(
         "Fuente", sorted(events["source_display_name"].dropna().unique()), key="news_source"
     )
     province_filter = fcol3.multiselect("Provincia", sorted(events["province"].dropna().unique()), key="news_province")
     project_filter = fcol4.multiselect("Proyecto", sorted(events["project_name"].dropna().unique()), key="news_project")
-    category_filter = fcol5.multiselect("Categoría", sorted(events["category"].dropna().unique()), key="news_category")
+    category_filter = fcol5.multiselect(
+        "Categoría", sorted(events["category"].dropna().unique()), format_func=category_label, key="news_category"
+    )
 
     date_options = sorted(events["detected_at_dt"].dt.date.dropna().unique(), reverse=True)
     date_filter = st.multiselect("Fecha de detección", date_options, key="news_date")
@@ -75,8 +89,8 @@ for _, event in filtered.iterrows():
     with st.container(border=True):
         badge_row(
             [
-                badge(event["relevance"], relevance_kind(event["relevance"])),
-                badge(event["category"], "slate"),
+                badge(relevance_label(event["relevance"]), relevance_kind(event["relevance"])),
+                badge(category_label(event["category"]), "slate"),
             ]
         )
         st.markdown(f"**{event['title']}**")
