@@ -156,3 +156,44 @@ def get_project_detail(project_id: int) -> dict | None:
     project["announcements"] = announcements
     project["profile"] = get_profile(project["project_key"])
     return project
+
+
+def get_news_events_df() -> pd.DataFrame:
+    """Detected mining-related novelties, most recently detected first.
+
+    Ordered by `detected_at` (always an ISO timestamp we set ourselves)
+    rather than `publication_date`, which arrives in inconsistent formats
+    across sources (SIACAM's free-text "MM/YY YYYY" vs. RSS's ISO dates)
+    and so can't be sorted reliably as a plain string.
+
+    Joins on `projects.project_key` (stable) rather than trusting a stored
+    numeric id - `projects.id` is reassigned on every pipeline rebuild, so
+    resolving the current project id/name at read time is what keeps old
+    news events correctly linked after `projects` gets rebuilt.
+    """
+    conn = get_connection()
+    try:
+        return pd.read_sql_query(
+            """
+            SELECT ne.*, p.id AS project_id, p.name AS project_name, ns.display_name AS source_display_name
+            FROM news_events ne
+            LEFT JOIN projects p ON p.project_key = ne.project_key
+            LEFT JOIN news_sources ns ON ns.internal_name = ne.source_internal_name
+            ORDER BY ne.detected_at DESC, ne.id DESC
+            """,
+            conn,
+        )
+    finally:
+        conn.close()
+
+
+def get_news_sources_df() -> pd.DataFrame:
+    """Health/status of every news source, including the ones we
+    deliberately don't run (UNSUPPORTED/MANUAL) - see
+    `mining_intel.news.unsupported_sources`.
+    """
+    conn = get_connection()
+    try:
+        return pd.read_sql_query("SELECT * FROM news_sources ORDER BY display_name", conn)
+    finally:
+        conn.close()

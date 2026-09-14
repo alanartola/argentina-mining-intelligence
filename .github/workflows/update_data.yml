@@ -1,8 +1,8 @@
-name: Update mining data
+name: Daily mining intelligence update
 
 on:
   schedule:
-    - cron: "0 12 * * *" # 09:00 ART (UTC-3)
+    - cron: "0 10 * * *" # 07:00 ART (UTC-3, no DST in Argentina)
   workflow_dispatch: {}
 
 permissions:
@@ -21,8 +21,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run update pipeline
-        run: python scripts/run_update.py
+      - name: Run daily update (structured data + news monitor)
+        run: python -m mining_intel.pipeline.run_daily
 
       - name: Commit updated data if changed
         run: |

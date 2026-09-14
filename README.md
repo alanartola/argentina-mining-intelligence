@@ -23,8 +23,8 @@ python -m venv .venv
 source .venv/bin/activate  # En Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-# Traer/actualizar los datos
-python scripts/run_update.py
+# Traer/actualizar los datos (datos estructurados + monitor de novedades)
+python -m mining_intel.pipeline.run_daily
 
 # Levantar el dashboard
 streamlit run app/Home.py

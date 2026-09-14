@@ -1,3 +1,13 @@
+"""Structured-data pipeline: SIACAM announcements + San Juan tenders +
+project deduplication.
+
+This used to be a single module (`mining_intel/pipeline.py`); it's now this
+package's `__init__.py` so that `mining_intel.pipeline.run_daily` can exist
+as a real submodule (the single daily entrypoint requested for the whole
+app) while every existing `from mining_intel.pipeline import run_all`
+import keeps working unchanged.
+"""
+
 import logging
 import sqlite3
 import traceback

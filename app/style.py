@@ -304,6 +304,18 @@ def stage_kind(stage: str) -> str:
     return _STAGE_KIND.get((stage or "").strip().lower(), "slate")
 
 
+_RELEVANCE_KIND = {
+    "critical": "red",
+    "high": "copper",
+    "medium": "navy",
+    "low": "slate",
+}
+
+
+def relevance_kind(relevance: str) -> str:
+    return _RELEVANCE_KIND.get((relevance or "").strip().lower(), "slate")
+
+
 def source_label(internal_name: str) -> str:
     """Plain-text human label for a source slug - for use inside st.dataframe
     cells, which can't render the HTML link from `source_link`.

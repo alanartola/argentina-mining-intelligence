@@ -71,3 +71,52 @@ CREATE TABLE IF NOT EXISTS scrape_runs (
     status TEXT NOT NULL,
     error TEXT
 );
+
+-- One row per detected mining-related novelty (news.pipeline.run_daily).
+-- `content_hash` is the primary new-vs-seen guard: a run never re-inserts a
+-- hash it already has, and only flips `status` to UPDATED when the fetched
+-- text differs materially from what's stored. `project_key`/`province` are
+-- only ever set when `news.link_project` is confident - never guessed.
+--
+-- `project_key` (not `projects.id`) on purpose: `projects` is fully
+-- rebuilt on every `run_all()` call and its autoincrement ids are NOT
+-- stable across rebuilds (see the comment on `projects` above), but a
+-- persisted `news_events` row must keep pointing at the right project
+-- indefinitely. `project_key` IS stable, so the current numeric id/name are
+-- resolved by joining on it at read time (`db.queries.get_news_events_df`),
+-- never trusted from a stored id.
+CREATE TABLE IF NOT EXISTS news_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content_hash TEXT NOT NULL UNIQUE,
+    title TEXT NOT NULL,
+    summary TEXT,
+    source_internal_name TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    publication_date TEXT,
+    detected_at TEXT NOT NULL,
+    updated_at TEXT,
+    category TEXT NOT NULL,
+    relevance TEXT NOT NULL,
+    relevance_reason TEXT,
+    province TEXT,
+    project_key TEXT,
+    company TEXT,
+    mineral TEXT,
+    official INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'NEW',
+    additional_sources TEXT,
+    raw_text TEXT
+);
+
+-- Status/health of every news source, including the ones we deliberately
+-- don't run (UNSUPPORTED/MANUAL) - so the "Fuentes" view is honest about
+-- what is and isn't actually connected, never silently omitting a source.
+CREATE TABLE IF NOT EXISTS news_sources (
+    internal_name TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    state TEXT NOT NULL,
+    last_run_at TEXT,
+    last_success_at TEXT,
+    last_document_count INTEGER,
+    last_error TEXT
+);
