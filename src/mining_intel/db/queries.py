@@ -4,7 +4,7 @@ import pandas as pd
 
 from mining_intel.db.connection import get_connection
 from mining_intel.enrichment.profiles import get_profile
-from mining_intel.news import ranking
+from mining_intel.news import dates, ranking
 from mining_intel.news.dedup import normalize_title
 from mining_intel.processing.dedup import split_provinces
 
@@ -189,7 +189,7 @@ def get_news_events_df() -> pd.DataFrame:
         conn.close()
 
 
-def get_daily_briefing(limit: int = 3, hours: int = 24) -> pd.DataFrame:
+def get_daily_briefing(limit: int = 3, hours: int = 24, max_fallback_hours: int = 24 * 7) -> pd.DataFrame:
     """Top `limit` most important mining-news events for the Home "Daily
     Brief" - not the latest `limit` events, the most *important* ones.
 
@@ -197,11 +197,18 @@ def get_daily_briefing(limit: int = 3, hours: int = 24) -> pd.DataFrame:
     1. Only CRITICAL/HIGH events qualify as "importante" - MEDIUM/LOW never
        fill out the count, matching the product requirement to show fewer
        than `limit` (even zero) rather than pad with lower-value items.
-    2. Restricted to events detected in the last `hours` (default 24h). If
-       that window is empty - e.g. viewed a few hours after a run that
-       landed just outside it - falls back to the most recent calendar day
-       that has any qualifying event, so the brief isn't empty just from bad
-       timing.
+    2. Restricted by the event's own real-world date (`dates.parse_event_date`
+       on `publication_date`, falling back to `detected_at` when it can't be
+       parsed) to the last `hours` (default 24h). Filtering on `detected_at`
+       alone would be wrong here: SIACAM's announcements dataset covers
+       years of history, all inserted with today's `detected_at` the day
+       that source was added, so a 2022 announcement would otherwise show up
+       as "hoy" forever. If the `hours` window is empty - e.g. viewed a few
+       hours after a run that landed just outside it - falls back to the
+       most recent calendar day that has any qualifying event, capped at
+       `max_fallback_hours` (default one week) so the brief still never
+       surfaces a stale event as today's news - an empty brief is the
+       correct result once a full week has passed with no CRITICAL/HIGH news.
     3. Ranked by `news.ranking.score_event`, keeping only the highest-scoring
        event per project (`project_key`, or per normalized title when an
        event isn't linked to a project) - several same-day filings about one
@@ -215,23 +222,32 @@ def get_daily_briefing(limit: int = 3, hours: int = 24) -> pd.DataFrame:
     if events.empty:
         return events
 
-    events = events.assign(detected_at_dt=pd.to_datetime(events["detected_at"], errors="coerce", utc=True))
-    events = events.dropna(subset=["detected_at_dt"])
+    events = events.assign(
+        detected_at_dt=pd.to_datetime(events["detected_at"], errors="coerce", utc=True),
+        event_date_dt=dates.effective_date_series(events),
+    )
+    events = events.dropna(subset=["event_date_dt"])
     if events.empty:
         return events
 
-    cutoff = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=hours)
-    window = events[events["detected_at_dt"] >= cutoff]
+    now = pd.Timestamp.now(tz="UTC")
+    fallback_cutoff = now - pd.Timedelta(hours=max_fallback_hours)
+    events = events[events["event_date_dt"] >= fallback_cutoff]
+    if events.empty:
+        return events
+
+    cutoff = now - pd.Timedelta(hours=hours)
+    window = events[events["event_date_dt"] >= cutoff]
     if window.empty:
-        latest_date = events["detected_at_dt"].dt.date.max()
-        window = events[events["detected_at_dt"].dt.date == latest_date]
+        latest_date = events["event_date_dt"].dt.date.max()
+        window = events[events["event_date_dt"].dt.date == latest_date]
     if window.empty:
         return window
 
     window = window.copy()
     window["score"] = window.apply(ranking.score_event, axis=1)
     window["_dedup_key"] = window["project_key"].fillna(window["title"].map(normalize_title))
-    window = window.sort_values(["score", "detected_at_dt"], ascending=[False, False])
+    window = window.sort_values(["score", "event_date_dt"], ascending=[False, False])
     window = window.drop_duplicates("_dedup_key", keep="first")
 
     return window.head(limit).drop(columns=["_dedup_key"])

@@ -122,7 +122,7 @@ section_header(
 
 if briefing.empty:
     st.markdown(
-        '<div class="ami-empty-note">No se detectaron novedades de alto impacto en las últimas 24 horas.</div>',
+        '<div class="ami-empty-note">No se detectaron novedades de alto impacto en la última semana.</div>',
         unsafe_allow_html=True,
     )
 else:

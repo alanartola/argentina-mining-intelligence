@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from mining_intel.db.queries import get_news_events_df
+from mining_intel.news.dates import effective_date_series
 from style import (
     badge,
     badge_row,
@@ -38,8 +39,16 @@ if events.empty:
     st.stop()
 
 events["detected_at_dt"] = pd.to_datetime(events["detected_at"], errors="coerce", utc=True)
+events["event_date_dt"] = effective_date_series(events)
 cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 last_24h = events[events["detected_at_dt"] >= cutoff]
+
+# Filtered on the event's own real-world date, not `detected_at`: sources
+# like SIACAM back-fill years of history in one run, all stamped with
+# today's `detected_at` - using that alone would keep showing old
+# announcements as if they were this week's news.
+week_cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+events = events[events["event_date_dt"] >= week_cutoff]
 
 section_header("Últimas 24 horas")
 col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -50,7 +59,14 @@ col4.metric("Noticias", int((last_24h["category"] == "NEWS").sum()))
 col5.metric("Licitaciones", int((last_24h["category"] == "TENDER").sum()))
 col6.metric("Proyectos actualizados", int(last_24h["project_id"].dropna().nunique()))
 
-section_header("Feed cronológico", "Ordenado por fecha de detección, de más reciente a más antiguo.")
+section_header(
+    "Feed cronológico",
+    "Novedades de los últimos 7 días, de más reciente a más antigua.",
+)
+
+if events.empty:
+    st.info("No se detectaron novedades en los últimos 7 días.")
+    st.stop()
 
 with st.container(border=True):
     fcol1, fcol2, fcol3, fcol4, fcol5 = st.columns(5)
@@ -85,6 +101,17 @@ if date_filter:
 
 st.caption(f"{len(filtered)} de {len(events)} novedades")
 
+
+def _escape_markdown_dollars(text: str) -> str:
+    """A lone `$` is common in real titles ("u$s346 millones"); a pair of
+    them makes Streamlit's markdown render everything in between as LaTeX
+    instead of plain text (observed live: a title became a garbled math
+    block). Escaping keeps `$` literal without touching any other
+    formatting.
+    """
+    return (text or "").replace("$", "\\$")
+
+
 for _, event in filtered.iterrows():
     with st.container(border=True):
         badge_row(
@@ -93,7 +120,7 @@ for _, event in filtered.iterrows():
                 badge(category_label(event["category"]), "slate"),
             ]
         )
-        st.markdown(f"**{event['title']}**")
+        st.markdown(f"**{_escape_markdown_dollars(event['title'])}**")
         meta_bits = [
             event["detected_at_dt"].strftime("%Y-%m-%d %H:%M UTC") if pd.notna(event["detected_at_dt"]) else "—",
             event["source_display_name"] or event["source_internal_name"],
@@ -104,6 +131,6 @@ for _, event in filtered.iterrows():
             meta_bits.append(f"Proyecto: {event['project_name']}")
         st.caption(" · ".join(str(b) for b in meta_bits))
         if event["summary"]:
-            st.write(event["summary"])
+            st.write(_escape_markdown_dollars(event["summary"]))
         st.caption(f"Por qué esta relevancia: {event['relevance_reason']}")
         st.markdown(f"[Ver fuente original]({event['source_url']})")
